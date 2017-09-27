@@ -12,11 +12,15 @@
  * https://github.com/stefalda/ReactNativeLocalization
  */
 'use strict';
+import React from 'react';
 import { NativeModules } from 'react-native';
 var localization = NativeModules.ReactLocalization;
 if (!localization) {
     console.error("Something went wrong initializing the native ReactLocalization module.\nPlease check your configuration.\nDid you run 'react-native link'?");
 }
+
+var placeholderRegex = /(\{\d+\})/;
+var isReactComponent = value => typeof value.$$typeof === 'symbol';
 
 var interfaceLanguage = localization.language.replace(/_/g, '-');
 class LocalizedStrings {
@@ -108,12 +112,19 @@ class LocalizedStrings {
     //i.e. I'd like some {0} and {1}, or just {0}
     //Use example:
     //  strings.formatString(strings.question, strings.bread, strings.butter)
-    formatString(str, ...values) {
-        var res = str;
-        for (let i = 0; i < values.length; i++) {
-            res = this._replaceAll("{" + i + "}", values[i], res);
-        }
-        return res;
+    formatString(str, ...valuesForPlaceholders) {
+        return str
+            .split(placeholderRegex)
+            .filter(textPart => !!textPart)
+            .map((textPart, index) => {
+                if (textPart.match(placeholderRegex)) {
+                    const valueForPlaceholder = valuesForPlaceholders[textPart.slice(1, -1)];
+                    return isReactComponent(valueForPlaceholder)
+                        ? React.Children.toArray(valueForPlaceholder).map(component => ({...component, key: index.toString()}))
+                        : valueForPlaceholder;
+                }
+                return textPart;
+            });
     }
 
     //Return a string with the passed key in a different language 
@@ -125,27 +136,5 @@ class LocalizedStrings {
         }
         return null;
     }
-
-    //Replace all occorrencies of a string in another using RegExp
-    _replaceAll(original, replacement, str) {
-            original = original.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
-            replacement = `${replacement}`.replace(/([$])/g, '$$$$');
-            return str.replace(new RegExp(original, 'g'), replacement);
-        }
-        //Can be used to retrieve the interface language
-        //but now it's useless because that value is exposed directly
-        //in a dictionary from the ReactLocalization class
-        //I leave it as an example but it's now deprecated
-        /*
-        _getLanguage(){
-          var deferred = Q.defer();
-          localization.getLanguage((error, deviceLanguage)=>{
-            var language = deviceLanguage;
-            console.log("Language in js:"+language);
-            deferred.resolve(language);
-          });
-          return deferred.promise;
-        }
-        */
 }
 module.exports = LocalizedStrings;
